@@ -3,7 +3,7 @@ Module to retrieve Azure Monitor metrics for VMs.
 """
 from datetime import datetime, timedelta
 from azure.identity import DefaultAzureCredential
-from azure.monitor.query import MetricsQueryClient
+from azure.mgmt.monitor import MonitorManagementClient
 from azure.core.exceptions import HttpResponseError
 
 
@@ -22,10 +22,20 @@ class VMMetricsRetriever:
         'network_out': 'Network Out Total'
     }
     
-    def __init__(self):
-        """Initialize the VM Metrics Retriever."""
+    def __init__(self, subscription_id=None):
+        """
+        Initialize the VM Metrics Retriever.
+        
+        Args:
+            subscription_id: Azure subscription ID. If not provided, uses AZURE_SUBSCRIPTION_ID env var.
+        """
+        import os
+        self.subscription_id = subscription_id or os.getenv('AZURE_SUBSCRIPTION_ID')
+        if not self.subscription_id:
+            raise ValueError("Subscription ID must be provided or set in AZURE_SUBSCRIPTION_ID environment variable")
+        
         self.credential = DefaultAzureCredential()
-        self.metrics_client = MetricsQueryClient(self.credential)
+        self.monitor_client = MonitorManagementClient(self.credential, self.subscription_id)
     
     def get_vm_metrics(self, vm_resource_id, hours_back=1, aggregations=None):
         """
@@ -58,19 +68,19 @@ class VMMetricsRetriever:
         
         try:
             # Query all metrics
-            response = self.metrics_client.query_resource(
+            response = self.monitor_client.metrics.list(
                 resource_uri=vm_resource_id,
-                metric_names=metric_names,
-                timespan=(start_time, end_time),
-                granularity=timedelta(minutes=5),
-                aggregations=aggregations
+                metricnames=','.join(metric_names),
+                timespan=f"{start_time.isoformat()}/{end_time.isoformat()}",
+                interval='PT5M',  # ISO 8601 duration format: 5 minutes
+                aggregation=','.join(aggregations)
             )
             
             # Process each metric
-            for metric in response.metrics:
+            for metric in response.value:
                 metric_data = {
-                    'name': metric.name,
-                    'unit': metric.unit,
+                    'name': metric.name.value,
+                    'unit': str(metric.unit),
                     'timeseries': []
                 }
                 
@@ -78,7 +88,7 @@ class VMMetricsRetriever:
                     series_data = []
                     for data_point in timeseries.data:
                         point = {
-                            'timestamp': data_point.timestamp.isoformat() if data_point.timestamp else None
+                            'timestamp': data_point.time_stamp.isoformat() if data_point.time_stamp else None
                         }
                         
                         # Add available aggregations
@@ -97,10 +107,10 @@ class VMMetricsRetriever:
                     
                     metric_data['timeseries'].append({
                         'data': series_data,
-                        'metadata': timeseries.metadata_values
+                        'metadata': timeseries.metadatavalues if hasattr(timeseries, 'metadatavalues') else []
                     })
                 
-                vm_metrics['metrics'][metric.name] = metric_data
+                vm_metrics['metrics'][metric.name.value] = metric_data
                 
         except HttpResponseError as e:
             print(f"Error retrieving metrics for {vm_resource_id}: {e}")

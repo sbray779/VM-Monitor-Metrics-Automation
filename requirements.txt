@@ -1,4 +1,4 @@
 azure-identity
 azure-mgmt-resourcegraph
-azure-monitor-query
+azure-mgmt-monitor
 python-dotenv
