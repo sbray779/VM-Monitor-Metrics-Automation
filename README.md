@@ -34,17 +34,30 @@ az login
 ## Installation
 
 1. Clone this repository
-2. Install dependencies:
+
+2. Create and activate a virtual environment:
+```bash
+# Create virtual environment
+python -m venv .venv
+
+# Activate on Windows
+.venv\Scripts\activate
+
+# Activate on Linux/Mac
+source .venv/bin/activate
+```
+
+3. Install dependencies:
 ```bash
 pip install -r requirements.txt
 ```
 
-3. Create a `.env` file from the example:
+4. Create a `.env` file from the example:
 ```bash
 cp .env.example .env
 ```
 
-4. Edit `.env` and set your Azure subscription ID:
+5. Edit `.env` and set your Azure subscription ID:
 ```
 AZURE_SUBSCRIPTION_ID=your-subscription-id
 ```
