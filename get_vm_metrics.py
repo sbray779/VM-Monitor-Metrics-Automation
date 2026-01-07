@@ -1,0 +1,205 @@
+"""
+Module to retrieve Azure Monitor metrics for VMs.
+"""
+from datetime import datetime, timedelta
+from azure.identity import DefaultAzureCredential
+from azure.monitor.query import MetricsQueryClient
+from azure.core.exceptions import HttpResponseError
+
+
+class VMMetricsRetriever:
+    """Class to retrieve VM metrics from Azure Monitor."""
+    
+    # Define metric names for CPU, Memory, and Storage
+    METRICS = {
+        'cpu': 'Percentage CPU',
+        'memory': 'Available Memory Bytes',
+        'disk_read': 'Disk Read Bytes',
+        'disk_write': 'Disk Write Bytes',
+        'disk_read_ops': 'Disk Read Operations/Sec',
+        'disk_write_ops': 'Disk Write Operations/Sec',
+        'network_in': 'Network In Total',
+        'network_out': 'Network Out Total'
+    }
+    
+    def __init__(self):
+        """Initialize the VM Metrics Retriever."""
+        self.credential = DefaultAzureCredential()
+        self.metrics_client = MetricsQueryClient(self.credential)
+    
+    def get_vm_metrics(self, vm_resource_id, hours_back=1, aggregations=None):
+        """
+        Retrieve metrics for a specific VM.
+        
+        Args:
+            vm_resource_id: The full Azure resource ID of the VM.
+            hours_back: Number of hours to look back for metrics (default: 1).
+            aggregations: List of aggregation types (e.g., ['Average', 'Maximum']).
+            
+        Returns:
+            Dictionary containing metrics data for the VM.
+        """
+        if aggregations is None:
+            aggregations = ['Average', 'Maximum', 'Minimum']
+        
+        # Set time range
+        end_time = datetime.utcnow()
+        start_time = end_time - timedelta(hours=hours_back)
+        
+        # Prepare metrics list
+        metric_names = list(self.METRICS.values())
+        
+        vm_metrics = {
+            'vm_resource_id': vm_resource_id,
+            'start_time': start_time.isoformat(),
+            'end_time': end_time.isoformat(),
+            'metrics': {}
+        }
+        
+        try:
+            # Query all metrics
+            response = self.metrics_client.query_resource(
+                resource_uri=vm_resource_id,
+                metric_names=metric_names,
+                timespan=(start_time, end_time),
+                granularity=timedelta(minutes=5),
+                aggregations=aggregations
+            )
+            
+            # Process each metric
+            for metric in response.metrics:
+                metric_data = {
+                    'name': metric.name,
+                    'unit': metric.unit,
+                    'timeseries': []
+                }
+                
+                for timeseries in metric.timeseries:
+                    series_data = []
+                    for data_point in timeseries.data:
+                        point = {
+                            'timestamp': data_point.timestamp.isoformat() if data_point.timestamp else None
+                        }
+                        
+                        # Add available aggregations
+                        if data_point.average is not None:
+                            point['average'] = data_point.average
+                        if data_point.maximum is not None:
+                            point['maximum'] = data_point.maximum
+                        if data_point.minimum is not None:
+                            point['minimum'] = data_point.minimum
+                        if data_point.total is not None:
+                            point['total'] = data_point.total
+                        if data_point.count is not None:
+                            point['count'] = data_point.count
+                        
+                        series_data.append(point)
+                    
+                    metric_data['timeseries'].append({
+                        'data': series_data,
+                        'metadata': timeseries.metadata_values
+                    })
+                
+                vm_metrics['metrics'][metric.name] = metric_data
+                
+        except HttpResponseError as e:
+            print(f"Error retrieving metrics for {vm_resource_id}: {e}")
+            vm_metrics['error'] = str(e)
+        
+        return vm_metrics
+    
+    def get_metrics_for_vm_list(self, vms, hours_back=1):
+        """
+        Retrieve metrics for a list of VMs.
+        
+        Args:
+            vms: List of VM dictionaries (from get_vms.py).
+            hours_back: Number of hours to look back for metrics.
+            
+        Returns:
+            List of dictionaries containing metrics for each VM.
+        """
+        all_metrics = []
+        
+        for vm in vms:
+            print(f"Retrieving metrics for VM: {vm['name']}")
+            metrics = self.get_vm_metrics(vm['id'], hours_back=hours_back)
+            metrics['vm_name'] = vm['name']
+            metrics['resource_group'] = vm['resource_group']
+            all_metrics.append(metrics)
+        
+        return all_metrics
+    
+    def summarize_metrics(self, vm_metrics):
+        """
+        Print a summary of VM metrics.
+        
+        Args:
+            vm_metrics: Metrics data for a single VM.
+        """
+        print(f"\nMetrics Summary for VM: {vm_metrics.get('vm_name', 'Unknown')}")
+        print(f"Resource Group: {vm_metrics.get('resource_group', 'Unknown')}")
+        print(f"Time Range: {vm_metrics['start_time']} to {vm_metrics['end_time']}")
+        print("-" * 80)
+        
+        if 'error' in vm_metrics:
+            print(f"Error: {vm_metrics['error']}")
+            return
+        
+        for metric_name, metric_data in vm_metrics['metrics'].items():
+            print(f"\nMetric: {metric_name} ({metric_data['unit']})")
+            
+            # Calculate aggregate statistics across all timeseries
+            all_averages = []
+            all_maximums = []
+            all_minimums = []
+            
+            for timeseries in metric_data['timeseries']:
+                for point in timeseries['data']:
+                    if 'average' in point and point['average'] is not None:
+                        all_averages.append(point['average'])
+                    if 'maximum' in point and point['maximum'] is not None:
+                        all_maximums.append(point['maximum'])
+                    if 'minimum' in point and point['minimum'] is not None:
+                        all_minimums.append(point['minimum'])
+            
+            if all_averages:
+                print(f"  Average: {sum(all_averages) / len(all_averages):.2f}")
+            if all_maximums:
+                print(f"  Peak: {max(all_maximums):.2f}")
+            if all_minimums:
+                print(f"  Minimum: {min(all_minimums):.2f}")
+
+
+def main():
+    """Main function to demonstrate metrics retrieval."""
+    from get_vms import VMRetriever
+    import os
+    
+    # Get VMs first
+    resource_group = os.getenv('AZURE_RESOURCE_GROUP')
+    vm_retriever = VMRetriever()
+    
+    if resource_group:
+        vms = vm_retriever.get_vms(resource_group=resource_group)
+    else:
+        vms = vm_retriever.get_vms()
+    
+    if not vms:
+        print("No VMs found.")
+        return
+    
+    # Get metrics for VMs
+    metrics_retriever = VMMetricsRetriever()
+    all_metrics = metrics_retriever.get_metrics_for_vm_list(vms, hours_back=24)
+    
+    # Print summaries
+    for vm_metrics in all_metrics:
+        metrics_retriever.summarize_metrics(vm_metrics)
+        print("\n" + "=" * 80 + "\n")
+    
+    return all_metrics
+
+
+if __name__ == "__main__":
+    main()
