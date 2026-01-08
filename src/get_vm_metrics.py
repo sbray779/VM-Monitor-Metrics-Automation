@@ -1,10 +1,13 @@
 """
 Module to retrieve Azure Monitor metrics for VMs.
 """
+import os
+import json
 from datetime import datetime, timedelta
 from azure.identity import DefaultAzureCredential
 from azure.mgmt.monitor import MonitorManagementClient
 from azure.core.exceptions import HttpResponseError
+from azure.storage.blob import BlobServiceClient
 
 
 class VMMetricsRetriever:
@@ -22,12 +25,13 @@ class VMMetricsRetriever:
         'network_out': 'Network Out Total'
     }
     
-    def __init__(self, subscription_id=None):
+    def __init__(self, subscription_id=None, storage_account_name=None):
         """
         Initialize the VM Metrics Retriever.
         
         Args:
             subscription_id: Azure subscription ID. If not provided, uses AZURE_SUBSCRIPTION_ID env var.
+            storage_account_name: Storage account name for writing metrics. If not provided, will use environment variable.
         """
         import os
         self.subscription_id = subscription_id or os.getenv('AZURE_SUBSCRIPTION_ID')
@@ -36,6 +40,13 @@ class VMMetricsRetriever:
         
         self.credential = DefaultAzureCredential()
         self.monitor_client = MonitorManagementClient(self.credential, self.subscription_id)
+        
+        # Initialize blob service client if storage account is provided
+        self.storage_account_name = storage_account_name or os.getenv('AZURE_STORAGE_ACCOUNT_NAME')
+        self.blob_service_client = None
+        if self.storage_account_name:
+            account_url = f"https://{self.storage_account_name}.blob.core.windows.net"
+            self.blob_service_client = BlobServiceClient(account_url=account_url, credential=self.credential)
     
     def get_vm_metrics(self, vm_resource_id, hours_back=1, aggregations=None):
         """
@@ -139,6 +150,57 @@ class VMMetricsRetriever:
             all_metrics.append(metrics)
         
         return all_metrics
+    
+    def write_metrics_to_blob(self, metrics_data, container_name="vm-metrics-output"):
+        """
+        Write metrics data to blob storage.
+        
+        Args:
+            metrics_data: Dictionary containing metrics data to write.
+            container_name: Name of the blob container (default: "vm-metrics-output").
+            
+        Returns:
+            Dictionary with write status and blob URL.
+        """
+        if not self.blob_service_client:
+            raise ValueError("Blob service client not initialized. Provide storage_account_name.")
+        
+        try:
+            # Ensure container exists
+            container_client = self.blob_service_client.get_container_client(container_name)
+            try:
+                container_client.get_container_properties()
+            except Exception:
+                # Container doesn't exist, create it
+                container_client.create_container()
+            
+            # Generate blob name with timestamp
+            timestamp = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
+            vm_count = metrics_data.get('vm_count', 0)
+            blob_name = f"vm-metrics-{timestamp}-{vm_count}vms.json"
+            
+            # Convert metrics to JSON
+            json_data = json.dumps(metrics_data, default=str, indent=2)
+            
+            # Upload to blob
+            blob_client = container_client.get_blob_client(blob_name)
+            blob_client.upload_blob(json_data, overwrite=True)
+            
+            blob_url = blob_client.url
+            
+            return {
+                "success": True,
+                "blob_name": blob_name,
+                "blob_url": blob_url,
+                "container": container_name,
+                "size_bytes": len(json_data)
+            }
+            
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e)
+            }
     
     def summarize_metrics(self, vm_metrics):
         """

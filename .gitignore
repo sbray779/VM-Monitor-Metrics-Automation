@@ -26,7 +26,37 @@ build/
 .DS_Store
 Thumbs.db
 
-# Output files
-*.json
+# Output files - VM metrics and test data
+vm-metrics-*.json
 *.csv
 *.log
+vm_list_*.json
+vm_metrics_*.json
+
+# Deployment artifacts
+*.zip
+function.zip
+src/function.zip
+.deployment
+
+# Azure Functions
+.python_packages/
+.funcignore
+local.settings.json
+__azurite_*.json
+__blobstorage__/
+__queuestorage__/
+.azure/
+
+# Bicep build outputs
+bicep/*.json
+infrastructure/bicep/*.json
+!bicep/main.bicep
+!bicep/*.bicepparam
+!infrastructure/bicep/main.bicep
+!infrastructure/bicep/*.bicepparam
+
+# Test outputs
+test_output/
+temp/
+tmp/

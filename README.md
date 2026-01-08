@@ -2,12 +2,51 @@
 
 This project automates the retrieval of Azure Virtual Machines and their performance metrics using Azure Resource Graph and Azure Monitor APIs.
 
+**Now available as an Azure Function for easy integration with Logic Apps and other services!**
+
 ## Features
 
 - **VM Discovery**: Retrieve all VMs in a subscription or specific resource group using Azure Resource Graph
 - **Performance Metrics**: Query Azure Monitor for CPU, memory, and storage metrics
 - **Flexible Querying**: Support for custom time ranges and metric aggregations
 - **Data Export**: Save VM lists and metrics to JSON files for further analysis
+- **Azure Function**: HTTP-triggered functions for integration with Logic Apps, Power Automate, and other services
+
+## Deployment Options
+
+### Option 1: Azure Function (Recommended for Production)
+Deploy as an HTTP-triggered Azure Function on **Flex Consumption (FC1)** plan for integration with Logic Apps and other services.
+
+📖 **[See DEPLOYMENT-SUMMARY.md for complete deployment guide](../DEPLOYMENT-SUMMARY.md)**
+
+**Quick Deploy (All-in-One):**
+```bash
+# Deploy both infrastructure and function code
+.\deploy-all.ps1
+```
+
+**Manual Deploy (Step-by-Step):**
+```bash
+# Step 1: Deploy infrastructure
+cd infrastructure
+.\deploy-bicep.ps1
+
+# Step 2: Deploy function code
+cd ..\src
+.\deploy-function-bicep.ps1
+```
+
+**Infrastructure Details:**
+- **Plan**: Flex Consumption (FC1) - pay only for execution time
+- **Runtime**: Python 3.11
+- **Authentication**: Managed Identity with Azure AD
+- **Deployment**: Remote build (Oryx)
+- **Storage**: Metrics written to blob storage for persistence
+
+### Option 2: Standalone Python Script
+Run locally or on a VM for ad-hoc metrics collection.
+
+See instructions below for local setup.
 
 ## Prerequisites
 
@@ -121,14 +160,28 @@ Additional environment variables (optional):
 
 ```
 VM-Monitor-Metrics-Automation/
-├── get_vms.py              # VM retrieval logic using Resource Graph
-├── get_vm_metrics.py       # Metrics retrieval using Azure Monitor
-├── main.py                 # Main orchestration script
-├── requirements.txt        # Python dependencies
-├── .env.example           # Environment variables template
-├── .gitignore             # Git ignore rules
-└── README.md              # This file
+├── infrastructure/              # Infrastructure as Code
+│   ├── bicep/
+│   │   ├── main.bicep          # Bicep infrastructure template
+│   │   └── main.bicepparam     # Bicep parameters
+│   └── deploy-bicep.ps1        # Infrastructure deployment script
+├── src/                         # Function App source code
+│   ├── function_app.py         # Azure Functions app definition (v2 model)
+│   ├── get_vms.py              # GetVMsOnly function - VM retrieval
+│   ├── get_vm_metrics.py       # GetVMMetrics function - VM + metrics
+│   ├── host.json               # Functions runtime configuration
+│   ├── requirements.txt        # Python dependencies
+│   └── deploy-function-bicep.ps1 # Function code deployment script
+├── deploy-all.ps1              # Complete deployment (infrastructure + code)
+├── main.py                     # Local development script
+├── .env.example                # Environment variables template
+└── README.md                   # This file
 ```
+
+**Key Directories:**
+- **infrastructure/**: Contains all Bicep templates and infrastructure deployment scripts
+- **src/**: Contains all Python function app source code and deployment scripts
+- **Root**: Convenience scripts and configuration files
 
 ## Error Handling
 
