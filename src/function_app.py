@@ -38,15 +38,28 @@ def get_vm_metrics(req: func.HttpRequest) -> func.HttpResponse:
         else:
             req_body = {}
         
+        # Support both single subscription_id and array of subscription_ids
         subscription_id = req.params.get('subscription_id') or req_body.get('subscription_id')
+        subscription_ids = req.params.get('subscription_ids') or req_body.get('subscription_ids')
+        
+        # Convert single subscription_id to array format
+        if subscription_ids:
+            if isinstance(subscription_ids, str):
+                # Handle comma-separated string
+                subscription_ids = [s.strip() for s in subscription_ids.split(',')]
+        elif subscription_id:
+            subscription_ids = [subscription_id]
+        else:
+            subscription_ids = None
+        
         resource_group = req.params.get('resource_group') or req_body.get('resource_group')
         hours_back = int(req.params.get('hours_back') or req_body.get('hours_back', 24))
         
-        logging.info(f"Parameters - subscription_id: {subscription_id}, resource_group: {resource_group}, hours_back: {hours_back}")
+        logging.info(f"Parameters - subscription_ids: {subscription_ids}, resource_group: {resource_group}, hours_back: {hours_back}")
         
         # Step 1: Retrieve VMs
         logging.info("Retrieving VMs from Azure Resource Graph...")
-        vm_retriever = VMRetriever(subscription_id=subscription_id)
+        vm_retriever = VMRetriever(subscription_ids=subscription_ids)
         
         if resource_group:
             vms = vm_retriever.get_vms(resource_group=resource_group)
@@ -68,14 +81,16 @@ def get_vm_metrics(req: func.HttpRequest) -> func.HttpResponse:
         # Get storage account name from environment variable
         storage_account_name = req.params.get('storage_account') or req_body.get('storage_account') or os.environ.get('AZURE_STORAGE_ACCOUNT_NAME')
         
-        metrics_retriever = VMMetricsRetriever(subscription_id=subscription_id, storage_account_name=storage_account_name)
+        # Use first subscription for metrics retrieval (metrics are retrieved per-VM anyway)
+        primary_subscription = subscription_ids[0] if subscription_ids else None
+        metrics_retriever = VMMetricsRetriever(subscription_id=primary_subscription, storage_account_name=storage_account_name)
         all_metrics = metrics_retriever.get_metrics_for_vm_list(vms, hours_back=hours_back)
         
         # Prepare response
         response_data = {
             "timestamp": datetime.utcnow().isoformat(),
             "vm_count": len(vms),
-            "subscription_id": subscription_id or "default",
+            "subscription_ids": subscription_ids or ["default"],
             "resource_group": resource_group or "all",
             "hours_back": hours_back,
             "vms": vms,
@@ -150,13 +165,26 @@ def get_vms_only(req: func.HttpRequest) -> func.HttpResponse:
         else:
             req_body = {}
         
+        # Support both single subscription_id and array of subscription_ids
         subscription_id = req.params.get('subscription_id') or req_body.get('subscription_id')
+        subscription_ids = req.params.get('subscription_ids') or req_body.get('subscription_ids')
+        
+        # Convert single subscription_id to array format
+        if subscription_ids:
+            if isinstance(subscription_ids, str):
+                # Handle comma-separated string
+                subscription_ids = [s.strip() for s in subscription_ids.split(',')]
+        elif subscription_id:
+            subscription_ids = [subscription_id]
+        else:
+            subscription_ids = None
+        
         resource_group = req.params.get('resource_group') or req_body.get('resource_group')
         
-        logging.info(f"Parameters - subscription_id: {subscription_id}, resource_group: {resource_group}")
+        logging.info(f"Parameters - subscription_ids: {subscription_ids}, resource_group: {resource_group}")
         
         # Retrieve VMs
-        vm_retriever = VMRetriever(subscription_id=subscription_id)
+        vm_retriever = VMRetriever(subscription_ids=subscription_ids)
         
         if resource_group:
             vms = vm_retriever.get_vms(resource_group=resource_group)
@@ -168,7 +196,7 @@ def get_vms_only(req: func.HttpRequest) -> func.HttpResponse:
         response_data = {
             "timestamp": datetime.utcnow().isoformat(),
             "vm_count": len(vms),
-            "subscription_id": subscription_id or "default",
+            "subscription_ids": subscription_ids or ["default"],
             "resource_group": resource_group or "all",
             "vms": vms
         }

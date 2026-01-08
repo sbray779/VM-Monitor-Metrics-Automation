@@ -2,19 +2,17 @@
 <#
 .SYNOPSIS
     Complete deployment script for VM Metrics Function App.
-
 .DESCRIPTION
     Deploys both infrastructure and function code in sequence.
     This is a convenience script that runs both deployment steps.
-
 .EXAMPLE
     .\deploy-all.ps1
     Deploys infrastructure and function code to default resource group.
-
 .EXAMPLE
     .\deploy-all.ps1 -ResourceGroup "my-rg" -Location "westus2"
     Deploys to custom resource group and location.
 #>
+
 
 param(
     [Parameter(Mandatory = $false)]

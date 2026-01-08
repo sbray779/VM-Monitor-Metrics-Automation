@@ -48,7 +48,6 @@ Write-Host ""
 # Package function code
 Write-Host "Packaging function code..." -ForegroundColor Yellow
 $zipFile = Join-Path $PSScriptRoot "function.zip"
-$sourceDir = $PSScriptRoot
 
 if (Test-Path $zipFile) {
     Remove-Item $zipFile -Force
@@ -56,11 +55,11 @@ if (Test-Path $zipFile) {
 
 # Create zip with function files
 $filesToZip = @(
-    (Join-Path $sourceDir "function_app.py"),
-    (Join-Path $sourceDir "get_vms.py"),
-    (Join-Path $sourceDir "get_vm_metrics.py"),
-    (Join-Path $sourceDir "host.json"),
-    (Join-Path $sourceDir "requirements.txt")
+    (Join-Path $PSScriptRoot "function_app.py"),
+    (Join-Path $PSScriptRoot "get_vms.py"),
+    (Join-Path $PSScriptRoot "get_vm_metrics.py"),
+    (Join-Path $PSScriptRoot "host.json"),
+    (Join-Path $PSScriptRoot "requirements.txt")
 )
 
 Write-Host "Adding files to package:" -ForegroundColor Cyan

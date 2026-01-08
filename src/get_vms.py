@@ -14,16 +14,27 @@ load_dotenv()
 class VMRetriever:
     """Class to retrieve VMs from Azure using Resource Graph."""
     
-    def __init__(self, subscription_id=None):
+    def __init__(self, subscription_ids=None):
         """
         Initialize the VM Retriever.
         
         Args:
-            subscription_id: Azure subscription ID. If not provided, uses AZURE_SUBSCRIPTION_ID env var.
+            subscription_ids: List of Azure subscription IDs. If not provided, uses AZURE_SUBSCRIPTION_ID env var.
+                            Can be a single string or a list of strings.
         """
-        self.subscription_id = subscription_id or os.getenv('AZURE_SUBSCRIPTION_ID')
-        if not self.subscription_id:
-            raise ValueError("Subscription ID must be provided or set in AZURE_SUBSCRIPTION_ID environment variable")
+        # Handle both single subscription_id and list of subscription_ids
+        if subscription_ids is None:
+            env_sub = os.getenv('AZURE_SUBSCRIPTION_ID')
+            if not env_sub:
+                raise ValueError("Subscription ID(s) must be provided or set in AZURE_SUBSCRIPTION_ID environment variable")
+            self.subscription_ids = [env_sub]
+        elif isinstance(subscription_ids, str):
+            self.subscription_ids = [subscription_ids]
+        else:
+            self.subscription_ids = subscription_ids
+        
+        if not self.subscription_ids or len(self.subscription_ids) == 0:
+            raise ValueError("At least one subscription ID must be provided")
         
         self.credential = DefaultAzureCredential()
         self.resource_graph_client = ResourceGraphClient(self.credential)
@@ -53,9 +64,9 @@ class VMRetriever:
             | project id, name, resourceGroup, location, properties
             """
         
-        # Create the query request
+        # Create the query request with all subscription IDs
         query_request = QueryRequest(
-            subscriptions=[self.subscription_id],
+            subscriptions=self.subscription_ids,
             query=query
         )
         
