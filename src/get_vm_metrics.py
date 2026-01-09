@@ -129,25 +129,43 @@ class VMMetricsRetriever:
         
         return vm_metrics
     
-    def get_metrics_for_vm_list(self, vms, hours_back=1):
+    def get_metrics_for_vm_list(self, vms, hours_back=1, batch_size=10):
         """
-        Retrieve metrics for a list of VMs.
+        Retrieve metrics for a list of VMs with batch processing.
         
         Args:
             vms: List of VM dictionaries (from get_vms.py).
             hours_back: Number of hours to look back for metrics.
+            batch_size: Number of VMs to process in each batch (for progress tracking).
             
         Returns:
             List of dictionaries containing metrics for each VM.
         """
         all_metrics = []
+        total_vms = len(vms)
         
-        for vm in vms:
-            print(f"Retrieving metrics for VM: {vm['name']}")
-            metrics = self.get_vm_metrics(vm['id'], hours_back=hours_back)
-            metrics['vm_name'] = vm['name']
-            metrics['resource_group'] = vm['resource_group']
-            all_metrics.append(metrics)
+        for index, vm in enumerate(vms, 1):
+            vm_name = vm['name']
+            
+            # Progress logging every batch_size VMs
+            if index % batch_size == 0 or index == total_vms:
+                print(f"Processing VM {index}/{total_vms}: {vm_name}")
+            
+            try:
+                metrics = self.get_vm_metrics(vm['id'], hours_back=hours_back)
+                metrics['vm_name'] = vm_name
+                metrics['resource_group'] = vm['resource_group']
+                all_metrics.append(metrics)
+            except Exception as e:
+                print(f"Error retrieving metrics for {vm_name}: {str(e)}")
+                # Add error entry
+                all_metrics.append({
+                    'vm_resource_id': vm['id'],
+                    'vm_name': vm_name,
+                    'resource_group': vm['resource_group'],
+                    'location': vm['location'],
+                    'error': str(e)
+                })
         
         return all_metrics
     

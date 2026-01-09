@@ -54,19 +54,21 @@ def get_vm_metrics(req: func.HttpRequest) -> func.HttpResponse:
         
         resource_group = req.params.get('resource_group') or req_body.get('resource_group')
         hours_back = int(req.params.get('hours_back') or req_body.get('hours_back', 24))
+        page_size = int(req.params.get('page_size') or req_body.get('page_size', 100))
+        skip_token = req.params.get('skip_token') or req_body.get('skip_token')
         
-        logging.info(f"Parameters - subscription_ids: {subscription_ids}, resource_group: {resource_group}, hours_back: {hours_back}")
+        logging.info(f"Parameters - subscription_ids: {subscription_ids}, resource_group: {resource_group}, hours_back: {hours_back}, page_size: {page_size}")
         
-        # Step 1: Retrieve VMs
+        # Step 1: Retrieve VMs with pagination
         logging.info("Retrieving VMs from Azure Resource Graph...")
         vm_retriever = VMRetriever(subscription_ids=subscription_ids)
         
         if resource_group:
-            vms = vm_retriever.get_vms(resource_group=resource_group)
-            logging.info(f"Found {len(vms)} VMs in resource group: {resource_group}")
+            vms, next_skip_token = vm_retriever.get_vms(resource_group=resource_group, page_size=page_size, skip_token=skip_token)
+            logging.info(f"Found {len(vms)} VMs in resource group: {resource_group} (page {page_size})")
         else:
-            vms = vm_retriever.get_vms()
-            logging.info(f"Found {len(vms)} VMs in subscription")
+            vms, next_skip_token = vm_retriever.get_vms(page_size=page_size, skip_token=skip_token)
+            logging.info(f"Found {len(vms)} VMs in subscription (page {page_size})")
         
         if not vms:
             return func.HttpResponse(
@@ -86,13 +88,16 @@ def get_vm_metrics(req: func.HttpRequest) -> func.HttpResponse:
         metrics_retriever = VMMetricsRetriever(subscription_id=primary_subscription, storage_account_name=storage_account_name)
         all_metrics = metrics_retriever.get_metrics_for_vm_list(vms, hours_back=hours_back)
         
-        # Prepare response
+        # Prepare response with pagination info
         response_data = {
             "timestamp": datetime.utcnow().isoformat(),
             "vm_count": len(vms),
             "subscription_ids": subscription_ids or ["default"],
             "resource_group": resource_group or "all",
             "hours_back": hours_back,
+            "page_size": page_size,
+            "has_more": next_skip_token is not None,
+            "skip_token": next_skip_token,
             "vms": vms,
             "metrics": all_metrics
         }
@@ -180,24 +185,29 @@ def get_vms_only(req: func.HttpRequest) -> func.HttpResponse:
             subscription_ids = None
         
         resource_group = req.params.get('resource_group') or req_body.get('resource_group')
+        page_size = int(req.params.get('page_size') or req_body.get('page_size', 100))
+        skip_token = req.params.get('skip_token') or req_body.get('skip_token')
         
-        logging.info(f"Parameters - subscription_ids: {subscription_ids}, resource_group: {resource_group}")
+        logging.info(f"Parameters - subscription_ids: {subscription_ids}, resource_group: {resource_group}, page_size: {page_size}")
         
-        # Retrieve VMs
+        # Retrieve VMs with pagination
         vm_retriever = VMRetriever(subscription_ids=subscription_ids)
         
         if resource_group:
-            vms = vm_retriever.get_vms(resource_group=resource_group)
-            logging.info(f"Found {len(vms)} VMs in resource group: {resource_group}")
+            vms, next_skip_token = vm_retriever.get_vms(resource_group=resource_group, page_size=page_size, skip_token=skip_token)
+            logging.info(f"Found {len(vms)} VMs in resource group: {resource_group} (page {page_size})")
         else:
-            vms = vm_retriever.get_vms()
-            logging.info(f"Found {len(vms)} VMs in subscription")
+            vms, next_skip_token = vm_retriever.get_vms(page_size=page_size, skip_token=skip_token)
+            logging.info(f"Found {len(vms)} VMs in subscription (page {page_size})")
         
         response_data = {
             "timestamp": datetime.utcnow().isoformat(),
             "vm_count": len(vms),
             "subscription_ids": subscription_ids or ["default"],
             "resource_group": resource_group or "all",
+            "page_size": page_size,
+            "has_more": next_skip_token is not None,
+            "skip_token": next_skip_token,
             "vms": vms
         }
         

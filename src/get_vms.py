@@ -39,15 +39,17 @@ class VMRetriever:
         self.credential = DefaultAzureCredential()
         self.resource_graph_client = ResourceGraphClient(self.credential)
     
-    def get_vms(self, resource_group=None):
+    def get_vms(self, resource_group=None, page_size=100, skip_token=None):
         """
-        Retrieve all VMs in the subscription or a specific resource group.
+        Retrieve VMs in the subscription or a specific resource group with pagination support.
         
         Args:
             resource_group: Optional. If provided, filters VMs to this resource group.
+            page_size: Number of VMs to return per page (default: 100, max: 1000)
+            skip_token: Continuation token from previous query for pagination
             
         Returns:
-            List of VM dictionaries with relevant properties.
+            Tuple of (List of VM dictionaries, skip_token for next page or None if last page)
         """
         # Build the query
         if resource_group:
@@ -64,10 +66,18 @@ class VMRetriever:
             | project id, name, resourceGroup, location, properties
             """
         
-        # Create the query request with all subscription IDs
+        # Create the query request with all subscription IDs and pagination options
+        query_options = {
+            'top': min(page_size, 1000),  # Azure Resource Graph max is 1000
+        }
+        
+        if skip_token:
+            query_options['skip_token'] = skip_token
+        
         query_request = QueryRequest(
             subscriptions=self.subscription_ids,
-            query=query
+            query=query,
+            options=query_options
         )
         
         # Execute the query
@@ -85,7 +95,10 @@ class VMRetriever:
             }
             vms.append(vm)
         
-        return vms
+        # Get skip token for next page (if any)
+        next_skip_token = getattr(response, 'skip_token', None)
+        
+        return vms, next_skip_token
     
     def print_vms(self, vms):
         """
