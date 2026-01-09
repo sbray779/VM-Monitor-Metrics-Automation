@@ -32,7 +32,6 @@ vm-metrics-*.json
 *.log
 vm_list_*.json
 vm_metrics_*.json
-test-output-*.json
 test-output-paginated-*.json
 
 # Old standalone script (no longer used)
